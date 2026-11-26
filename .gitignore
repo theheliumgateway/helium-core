@@ -3,3 +3,4 @@ dist/
 devnet/
 test/*.cjs
 .env
+test/token-config.test.mjs

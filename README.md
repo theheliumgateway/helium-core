@@ -13,6 +13,7 @@ Helium keeps SOL in a Helius Privacy Rings balance that only your key can read. 
 | `src/spr.ts` | Shielding, private transfers and pushes through the Privacy Rings SDK (`@heliuslabs/spr`). |
 | `src/product.ts`, `src/fees.ts`, `src/tiers.ts`, `src/quotes.ts` | The service fee and how it's quoted. On mainnet: 0.5% of each push, at most 0.2 SOL, paid to `7xjjCNA696brh5PAcyuYKQwZWBKpKDdqWoL9as3c6uuf`, from 28 Nov 2026, 17:30 UTC. |
 | `src/staking.ts`, `src/stakeEntry.ts` | Staking. |
+| `src/remote.ts` | Signed token settings: the Helium coin, its stake pool and the fee tiers, read from `heliumgateway.net/token.json` every 15 minutes. A file is used only if its Ed25519 signature matches `TOKEN_CONFIG_KEY` and it's newer than the settings in use. It can't change the fee rate, the cap, the start time or the treasury. Only the version downloaded from heliumgateway.net can reach that address; the Chrome Web Store version's security policy blocks it, so it uses only what's compiled into `src/product.ts`. |
 | `src/ext-background.ts` | The extension's service worker. It never sees the key. It checks every message from the trading dot, and answers only the requests in `DockRequest` (`src/messages.ts`). |
 | `src/popup.ts`, `src/dot-settings.ts`, `src/ext-wallet.ts` | The wallet page you see. It sends the worker the requests in `src/messages.ts` and nothing else. |
 | `src/hop.ts`, `server/relay.mjs` | The relayed push (prototype, devnet only, see below). |
@@ -41,6 +42,7 @@ npm run verify -- <path to the extension>
 The path can be:
 
 - the `.crx` file from the Chrome Web Store;
+- the `.zip` downloaded from heliumgateway.net (its code is the same as the store version's; only `manifest.json` differs, adding `https://heliumgateway.net` to the connections it allows);
 - or the folder Chrome installed it in. Open `chrome://version`, find the line called Profile Path, and look in `<Profile Path>/Extensions/<extension id>/<version>/`.
 
 `verify` builds `background.js`, `wallet.js` and `wallet-worker.js` from this source, then compares each one byte for byte with the extension's copy. It prints `SAME` or `DIFFERENT` for each file. The bundles aren't minified, so you can also read them in the installed folder.

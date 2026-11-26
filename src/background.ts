@@ -9,7 +9,8 @@ import {
 } from "./crypto";
 import { AUTOLOCK_CHOICES, type Balances, type PasskeyInfo, type ProductInfo, type Request, type Response, type Status } from "./messages";
 import { passphraseProblem } from "./strength";
-import { activeProduct } from "./product";
+import { activeProduct, applyTokenSettings, TOKEN_ISSUED } from "./product";
+import { TOKEN_CONFIG_URL, verifyTokenConfig, type TokenConfig } from "./remote";
 import { feeConfigured, feeStarted } from "./fees";
 import { makeQuote } from "./quotes";
 import {
@@ -566,6 +567,34 @@ function describeError(e: unknown): string {
 }
 
 const EXT_BASE = chrome.runtime.getURL("");
+// Signed token settings (src/remote.ts). The last good file is kept, so the coin and the tiers survive a restart and an
+// offline start. Only the download build can reach the URL; elsewhere the fetch fails and the compiled settings stay.
+let tokenIssued = TOKEN_ISSUED;
+function useTokenSettings(c: TokenConfig): boolean {
+  if (c.issued <= tokenIssued) return false;
+  applyTokenSettings("mainnet", { token: c.token, staking: c.staking, tiers: c.tiers, burnPerPush: c.burnPerPush });
+  tokenIssued = c.issued;
+  clearTierCache();
+  return true;
+}
+async function refreshTokenSettings() {
+  const { tokenConfig } = await local.get("tokenConfig");
+  if (tokenConfig) useTokenSettings(await verifyTokenConfig(tokenConfig).catch(() => ({ issued: 0 }) as TokenConfig));
+  try {
+    const res = await fetch(TOKEN_CONFIG_URL, { cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer" });
+    if (!res.ok) return;
+    const file: unknown = await res.json();
+    if (useTokenSettings(await verifyTokenConfig(file))) await local.set({ tokenConfig: file });
+  } catch {
+    // blocked (the store build), offline, or a file that didn't pass: keep what's in use
+  }
+}
+// Only inside the extension (tests run this file in Node, which must stay offline).
+if ((globalThis as { location?: { protocol?: string } }).location?.protocol === "chrome-extension:") {
+  void refreshTokenSettings();
+  setInterval(() => void refreshTokenSettings(), 15 * 60_000);
+}
+
 chrome.runtime.onMessage.addListener((req: Request, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return false;
   // Only the page that owns this worker may drive the vault (sender URL under runtime.getURL, see worker-shim.ts).

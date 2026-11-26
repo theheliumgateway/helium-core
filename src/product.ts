@@ -103,8 +103,20 @@ export const PRODUCT: Record<Network, ProductConfig> = {
     feeBps: 50, // 0.5% of the pushed amount (the most MAX_FEE_BPS allows)
     feeCapLamports: "200000000", // never more than 0.2 SOL per push
     feeStartsAt: "2026-11-28T17:30:00Z", // no fee before this time
+    // TOKEN-START: the Helium coin, its stake pool and the tiers. Written by scripts/token-launch.mjs; don't edit by hand.
+    // TOKEN-END
   },
 };
+
+/** When the token settings compiled in above were signed (ms). 0 = none. Signed settings fetched later must be newer. */
+export const TOKEN_ISSUED = 0; // TOKEN-ISSUED (written by scripts/token-launch.mjs)
+
+/** Applies signed token settings (src/remote.ts) on top of the compiled config. Fee and treasury are never touched. */
+export function applyTokenSettings(network: Network, t: {
+  token: TokenDef; staking: StakingDef; tiers: TierDef[]; burnPerPush: string;
+}) {
+  PRODUCT[network] = { ...PRODUCT[network], token: t.token, tierSource: "staking", staking: t.staking, tiers: t.tiers, burnPerPush: t.burnPerPush };
+}
 
 /** A validated, normalized view of the config. Anything invalid quietly disables just that feature. */
 export interface ActiveProduct {

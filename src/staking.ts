@@ -118,8 +118,10 @@ export async function stakeTokens(
   let nonce = 0;
   while (used.has(nonce)) nonce++;
 
+  // pump.fun coins are Token-2022 tokens; the SDK assumes the classic token program unless told
+  const tokenProgramId = await tokenProgramOf(h, token.mint);
   const r = await client.stake(
-    { nonce, amount: new BN(amount.toString()), duration: new BN(lock), stakePool: staking.pool, stakePoolMint: token.mint },
+    { nonce, amount: new BN(amount.toString()), duration: new BN(lock), stakePool: staking.pool, stakePoolMint: token.mint, tokenProgramId },
     { invoker: invokerFor(h, seed) },
   );
   return { signature: r.txId, amount, lockSeconds: lock };
@@ -147,10 +149,11 @@ export async function unstakeUnlocked(
   }
   const client = sdk(settings);
   const invoker = invokerFor(h, seed);
+  const tokenProgramId = await tokenProgramOf(h, token.mint);
   const signatures: string[] = [];
   let total = 0n;
   for (const e of ready) {
-    const r = await client.unstake({ nonce: e.nonce, stakePool: staking.pool, stakePoolMint: token.mint, shouldClose: true }, { invoker });
+    const r = await client.unstake({ nonce: e.nonce, stakePool: staking.pool, stakePoolMint: token.mint, shouldClose: true, tokenProgramId }, { invoker });
     signatures.push(r.txId);
     total += e.amount;
   }
