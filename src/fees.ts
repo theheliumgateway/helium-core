@@ -28,13 +28,26 @@ export interface FeeBreakdown {
   discountBps: number;
 }
 
-/** fee = floor(amount * feeBps / 10000), capped, then reduced by the tier discount. */
-export function computeFee(p: ActiveProduct, amount: bigint, discountBps: number): FeeBreakdown {
-  if (!p.treasury || p.feeBps === 0 || amount <= 0n) return { gross: 0n, fee: 0n, discountBps };
+/** A fee is configured (treasury and rate), whether or not it has started. */
+export const feeConfigured = (p: ActiveProduct): boolean => !!p.treasury && p.feeBps > 0;
+/** The configured fee applies at `now`. */
+export const feeStarted = (p: ActiveProduct, now = Date.now()): boolean => feeConfigured(p) && now >= p.feeStartsAt;
+
+/** fee = floor(amount * feeBps / 10000), capped, then reduced by the tier discount. Zero before the fee's start time. */
+export function computeFee(p: ActiveProduct, amount: bigint, discountBps: number, now = Date.now()): FeeBreakdown {
+  if (!feeStarted(p, now) || amount <= 0n) return { gross: 0n, fee: 0n, discountBps };
   let gross = (amount * BigInt(p.feeBps)) / 10_000n;
   if (p.feeCapLamports > 0n && gross > p.feeCapLamports) gross = p.feeCapLamports;
   const fee = gross - (gross * BigInt(discountBps)) / 10_000n;
   return { gross, fee, discountBps };
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "28 Nov 2026, 17:30 UTC": the same text everywhere the start time is shown. */
+export function fmtUtc(ms: number): string {
+  const d = new Date(ms);
+  const two = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${two(d.getUTCHours())}:${two(d.getUTCMinutes())} UTC`;
 }
 
 /** Rent-exempt minimum for a 0-data account. A transfer below this to a nonexistent account fails. */

@@ -22,7 +22,7 @@ globalThis.chrome = {
   },
   action: { onClicked: { addListener: (f) => actionListeners.push(f) } },
   storage: {
-    local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o) },
+    local: { get: async (k) => ({ [k]: store[k] }), set: async (o) => Object.assign(store, o), remove: async (k) => { delete store[k]; } },
     session: {
       get: async (k) => ({ [k]: sess[k] }),
       set: async (o) => { if (!("dockWin" in o)) Object.assign(sess, o); }, // no reusable window in this test
@@ -181,6 +181,12 @@ check("no price is fetched for an expired balance", priceCalls === callsBefore, 
 r = await ask({ type: "balance.report", lamports: "1000000000", network: "mainnet" }, gw);
 r = await ask({ type: "dock.state" }, dot);
 check("unlocking the gateway again brings a fresh balance", r.ok && r.data.shielded?.sol === 1 && r.data.shielded.expired === false, r);
+r = await ask({ type: "balance.clear" }, dot);
+check("the dot can't clear the balance", r.ok === false && store.shielded?.lamports === "1000000000", r);
+r = await ask({ type: "balance.clear" }, gw);
+r = await ask({ type: "dock.state" }, dot);
+check("logging out of the gateway clears the balance from pump.fun", r.ok && r.data.shielded === null && store.shielded === undefined, r);
+await ask({ type: "balance.report", lamports: "1000000000", network: "mainnet" }, gw);
 store.shielded.at -= 600_000;
 alarmListeners.forEach((f) => f({ name: "shielded-expiry" }));
 await new Promise((res) => setTimeout(res, 10));

@@ -13,6 +13,10 @@ export type Request =
   /** id: the passkey's credential id (base64url); prf: its PRF output for that passkey's salt (hex). */
   | { type: "unlockPasskey"; id: string; prf: string }
   | { type: "lock" }
+  /** Lock, then set this gateway aside on this device (still encrypted) so another can be opened or created. */
+  | { type: "logOut" }
+  /** Make a gateway set aside on this device the current one again (then unlock it as usual). */
+  | { type: "switchTo"; address: string }
   | { type: "checkPassphrase"; passphrase: string }
   | { type: "changePassphrase"; passphrase: string; next: string }
   /** salt: the PRF input the page used (base64url, 32 bytes). Needs the passphrase, like every new way in. */
@@ -36,7 +40,7 @@ export type Request =
   | { type: "sendPrivate"; to: string; lamports: string; passphrase: string }
   | { type: "quote"; lamports: string; payWithToken?: boolean }
   | { type: "shield"; lamports: string }
-  | { type: "push"; lamports: string | "all"; to?: string; payWithToken?: boolean }
+  | { type: "push"; lamports: string | "all"; to?: string; payWithToken?: boolean; /** The `at` of the quote the user saw. */ quotedAt?: number }
   | { type: "sendPublic"; lamports: string | "all"; to?: string }
   | { type: "stake"; amount: string }
   | { type: "unstake" }
@@ -45,6 +49,8 @@ export type Request =
 export interface ProductInfo {
   feeBps: number;
   feeActive: boolean;
+  /** When a configured fee starts (ms), or 0 when it has started or none is configured. */
+  feeStartsAt: number;
   tokenSymbol: string | null;
   tokenDecimals: number;
   tiers: { name: string; min: string; discountBps: number }[];
@@ -73,6 +79,8 @@ export interface Status {
   /** The passphrase used to unlock this session is weaker than a new one may be (kept in memory only). */
   weakPassphrase: boolean;
   autoShield: boolean;
+  /** Other gateways saved on this device, set aside with Log out. Public addresses only. */
+  saved: string[];
 }
 export interface PasskeyInfo { id: string; salt: string; label: string; added: number }
 export const AUTOLOCK_CHOICES = [2, 5, 10, 30] as const;
@@ -170,7 +178,11 @@ export const fundIsAuto = (sol: number, f: DockPrefs["fund"]): boolean => f.auto
 /** What the wallet page (wallet.html) may ask the extension's background: redeem the one-time code the dot's click put
  *  in its URL (single use, 2 minutes; nothing outside the extension can open that page or make a code, so nothing
  *  else can start a push), and report the unlocked gateway's shielded balance for pump.fun's wallet balance. */
-export type GatewayRequest = { type: "fund.claim"; id: string } | { type: "balance.report"; lamports: string; network: Network };
+export type GatewayRequest =
+  | { type: "fund.claim"; id: string }
+  | { type: "balance.report"; lamports: string; network: Network }
+  /** The wallet logged out: forget the balance it reported, so pump.fun never shows another gateway's SOL. */
+  | { type: "balance.clear" };
 export interface FundClaim { sol: number; auto: boolean }
 /** What the extension's settings page may ask its background. */
 export type SettingsRequest =

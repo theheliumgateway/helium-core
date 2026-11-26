@@ -1,13 +1,17 @@
 // Builds the disclosed price of a push: SOL fee (or token burn), tier discount, and whether the vault can afford it.
 import { address } from "@solana/kit";
 import { FEE_RESERVE_LAMPORTS, type Settings } from "./config";
-import { MIN_NEW_ACCOUNT_LAMPORTS, computeFee } from "./fees";
+import { MIN_NEW_ACCOUNT_LAMPORTS, computeFee, feeConfigured, fmtUtc } from "./fees";
 import type { ActiveProduct } from "./product";
 import { publicBalance, tokenProgramOf, vaultTokenAccount, type PushPlan, type VaultHandle } from "./spr";
 import { getTier } from "./tiers";
 
 export interface Quote {
   amount: string;
+  /** When this quote was made (ms). The push checks it, so a fee that starts after the review is never charged unseen. */
+  at: number;
+  /** When the configured fee starts (ms), or 0 when it has started or none is configured. */
+  feeStartsAt: number;
   /** What happens to pay the fee: nothing, SOL from the vault's public balance, or a token burn. */
   mode: "none" | "sol" | "token";
   feeBps: number;
@@ -30,13 +34,16 @@ export async function makeQuote(
   p: ActiveProduct,
   amount: bigint,
   payWithToken: boolean,
+  now = Date.now(),
 ): Promise<{ quote: Quote; plan: PushPlan }> {
   // The tier comes from tokens held by the vault wallet itself, not the destination wallet.
   const tier = await getTier(h, settings.network, h.address, p);
 
-  const breakdown = computeFee(p, amount, tier.discountBps);
+  const breakdown = computeFee(p, amount, tier.discountBps, now);
   let fee = breakdown.fee;
   let notice: string | null = null;
+  const pending = feeConfigured(p) && now < p.feeStartsAt;
+  if (pending) notice = `No service fee on this push. A ${p.feeBps / 100}% service fee starts ${fmtUtc(p.feeStartsAt)}.`;
 
   // A transfer below the rent-exempt minimum to a brand-new account fails; skip rather than break the push.
   if (fee > 0n && p.treasury && fee < MIN_NEW_ACCOUNT_LAMPORTS) {
@@ -89,6 +96,8 @@ export async function makeQuote(
     plan,
     quote: {
       amount: amount.toString(),
+      at: now,
+      feeStartsAt: pending ? p.feeStartsAt : 0,
       mode,
       feeBps: p.feeBps,
       treasury: p.treasury,

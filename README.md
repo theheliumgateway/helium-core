@@ -8,10 +8,10 @@ Helium keeps SOL in a Helius Privacy Rings balance that only your key can read. 
 
 | Path | What it does |
 |---|---|
-| `src/background.ts` | The wallet worker: creates, encrypts, unlocks and locks the key, and builds and signs every transaction. The key exists only inside this worker. |
+| `src/background.ts` | The wallet worker: creates, encrypts, unlocks and locks the key, and builds and signs every transaction. The key exists only inside this worker. Logging out sets a gateway aside on the device, still encrypted, so another can be opened. |
 | `src/crypto.ts` | Encrypts the key with your passphrase (PBKDF2-SHA256, 600,000 rounds, then AES-256-GCM), or with a passkey (WebAuthn PRF, then HKDF and AES-256-GCM). |
 | `src/spr.ts` | Shielding, private transfers and pushes through the Privacy Rings SDK (`@heliuslabs/spr`). |
-| `src/fees.ts`, `src/tiers.ts`, `src/quotes.ts` | The service fee and how it's quoted. |
+| `src/product.ts`, `src/fees.ts`, `src/tiers.ts`, `src/quotes.ts` | The service fee and how it's quoted. On mainnet: 0.5% of each push, at most 0.2 SOL, paid to `7xjjCNA696brh5PAcyuYKQwZWBKpKDdqWoL9as3c6uuf`, from 28 Nov 2026, 17:30 UTC. |
 | `src/staking.ts`, `src/stakeEntry.ts` | Staking. |
 | `src/ext-background.ts` | The extension's service worker. It never sees the key. It checks every message from the trading dot, and answers only the requests in `DockRequest` (`src/messages.ts`). |
 | `src/popup.ts`, `src/dot-settings.ts`, `src/ext-wallet.ts` | The wallet page you see. It sends the worker the requests in `src/messages.ts` and nothing else. |

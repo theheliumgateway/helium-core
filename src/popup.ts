@@ -3,6 +3,7 @@ import { MIN_PASSPHRASE_LENGTH, passphraseProblem, passphraseScore } from "./str
 import { NETWORK_FEE_LAMPORTS, RENT_EXEMPT_MIN, planPublicSend } from "./sweep";
 import { AUTO_SHIELD_MIN_LAMPORTS } from "./config";
 import { dotSettingsView } from "./dot-settings";
+import { fmtUtc } from "./fees";
 
 /* ───────────────────────── helpers ───────────────────────── */
 
@@ -81,6 +82,7 @@ const ICONS: Record<string, string> = {
   sol: '<path d="M6 8h12l-2 2.5H4L6 8zM6 13.5h12L16 16H4l2-2.5zM6 19h12l-2-2.5H4L6 19z" transform="translate(0 -3.5)"/>',
   wallet: '<rect x="3.5" y="6.5" width="17" height="13" rx="3"/><path d="M3.5 10.5h17M16 15h1.5"/>',
   star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9 6.8 19.6l1-5.8-4.3-4.1 5.9-.9L12 3.5z"/>',
+  logout: '<path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 16l-4-4 4-4M6 12h10"/>',
   user: '<circle cx="12" cy="9" r="3.5"/><path d="M5 20c1-3.6 3.8-5.5 7-5.5s6 1.9 7 5.5"/>',
 };
 function icon(name: keyof typeof ICONS | string, size = 20): SVGSVGElement {
@@ -102,6 +104,29 @@ const app = document.getElementById("app")!;
 /* ───────────────────────── toast ───────────────────────── */
 
 let toastTimer: number | undefined;
+/** "5 h 12 min" until `at`, for the service fee's countdown. */
+function untilText(at: number): string {
+  const min = Math.max(0, Math.ceil((at - Date.now()) / 60_000));
+  const d = Math.floor(min / 1440), hrs = Math.floor((min % 1440) / 60), m = min % 60;
+  return d > 0 ? `${d} d ${hrs} h` : hrs > 0 ? `${hrs} h ${m} min` : `${m} min`;
+}
+
+/** The notice that counts down to the service fee's start, updated every 20 seconds while it's on screen. */
+function feeCountdown(feeBps: number, at: number): HTMLElement {
+  const left = h("strong", {});
+  const el = h("div", { class: "notice" }, h("strong", {}, `Service fee of ${feeBps / 100}% per push starts in `), left,
+    ` (${fmtUtc(at)}). Pushes until then have no service fee. Every fee is shown before you confirm.`);
+  const tick = () => {
+    if (Date.now() < at) return void (left.textContent = untilText(at));
+    clearInterval(timer);
+    el.replaceChildren(h("strong", {}, `Service fee ${feeBps / 100}% per push. `), "Shown in full before you confirm.");
+  };
+  // Stops once the screen is repainted without this notice.
+  const timer = setInterval(() => (el.isConnected ? tick() : clearInterval(timer)), 20_000);
+  tick();
+  return el;
+}
+
 function toast(text: string, kind: "ok" | "err", linkUrl?: string) {
   document.querySelector(".toast")?.remove();
   const t = h("div", { class: `toast ${kind}` }, icon(kind === "ok" ? "check" : "lock", 18), h("span", {}, text));
@@ -331,10 +356,12 @@ async function runFund() {
     if (!q.sufficientPublic) {
       throw new Error(`The gateway needs about ${fmt(q.requiredPublicLamports)} SOL of public SOL for fees and has ${fmt(q.publicLamports)}. Send some to it (Receive).`);
     }
-    const r = await send<{ lamports: string; url: string }>({ type: "push", lamports: lamports.toString(), to, payWithToken: q.mode === "token" });
+    const r = await send<{ lamports: string; feeLamports: string; burned: string; url: string }>({ type: "push", lamports: lamports.toString(), to, payWithToken: q.mode === "token", quotedAt: q.at });
     fundRun = null;
     suggestedSol = null;
-    toast(`Unshielded ${fmtShort(r.lamports)} SOL to ${short(to)}`, "ok", r.url);
+    // One-click skips the review screen, so the confirmation names the service fee that was paid.
+    const paid = BigInt(r.feeLamports) > 0n ? ` · service fee ${fmt(r.feeLamports)} SOL` : "";
+    toast(`Unshielded ${fmtShort(r.lamports)} SOL to ${short(to)}${paid}`, "ok", r.url);
     balances = null;
     go("home");
     void loadBalances();
@@ -356,6 +383,18 @@ addEventListener("hashchange", () => {
 });
 /** Set once the user types in a Push/Shield amount, so a late balance load doesn't redraw the form under them. */
 let formTouched = false;
+
+/** Log out: lock and set this gateway aside on this device (still encrypted), then show the gateway picker. */
+async function logOut() {
+  await send({ type: "logOut" });
+  // pump.fun must never keep showing the balance of a gateway that is no longer open
+  void chrome.runtime.sendMessage({ type: "balance.clear" }).catch(() => undefined);
+  balances = null;
+  balError = null;
+  view = "home";
+  await render();
+  toast("Logged out. Your gateway stays saved on this device.", "ok");
+}
 
 async function render() {
   status = await send<Status>({ type: "status" });
@@ -464,14 +503,31 @@ function renderWelcome() {
       });
     legacySlot.replaceChildren(h("div", { class: "notice" }, "This extension already holds a gateway from an earlier version. Use it with the passphrase you set then."), b, msg);
   });
+  const savedMsg = h("div", { class: "msg", style: "text-align:center" });
+  const savedSlot = status.saved.length
+    ? h("div", { class: "stack", style: "width:100%" },
+        h("div", { class: "section-label", textContent: "Your gateways on this device" }),
+        ...status.saved.map((a) => {
+          const b = h("button", { class: "btn" }, icon("wallet", 18), `Gateway ${short(a)}`);
+          b.onclick = () =>
+            guarded(b, savedMsg, "Opening…", async () => {
+              await send({ type: "switchTo", address: a });
+              await render();
+            });
+          return b;
+        }),
+        savedMsg,
+        h("div", { class: "section-label", textContent: "Or add another" }))
+    : null;
   app.replaceChildren(
     splash(
       logoMark(),
       h("h1", {}, "Helium"),
       h("p", {}, "Hold SOL privately in a Helius Privacy Ring and push it to your main wallet in one click."),
+      savedSlot,
       legacySlot,
       (() => {
-        const b = h("button", { class: "btn", textContent: "Create a new gateway" });
+        const b = h("button", { class: status.saved.length ? "btn secondary" : "btn", textContent: "Create a new gateway" });
         b.onclick = renderCreate;
         return b;
       })(),
@@ -591,7 +647,12 @@ function renderUnlock() {
       h("p", {}, status.address ? `Gateway ${short(status.address)}` : "Enter your passphrase to unlock"),
       pkBtn,
       withPasskey ? h("div", { class: "or", textContent: "or" }) : null,
-      p.wrap, btn, msg),
+      p.wrap, btn, msg,
+      (() => {
+        const other = h("button", { class: "link", textContent: status.saved.length ? "Switch gateway" : "Use another gateway" });
+        other.onclick = () => void logOut().catch((e: unknown) => setMsg(msg, e instanceof Error ? e.message : String(e), "err"));
+        return other;
+      })()),
   );
   if (pkBtn) pkBtn.focus();
   else focusSoon(p.input);
@@ -617,10 +678,12 @@ function renderShell() {
       balances = null;
       await render();
     };
+    const outBtn = h("button", { class: "iconbtn", title: "Log out and switch gateway" }, icon("logout", 18));
+    outBtn.onclick = () => void logOut().catch((e: unknown) => toast(e instanceof Error ? e.message : String(e), "err"));
     const setBtn = h("button", { class: "iconbtn", title: "Settings" }, icon("sliders", 18));
     setBtn.onclick = () => go("settings");
     header = h("div", { class: "top" }, who, h("div", { class: "grow" }),
-      h("span", { class: `pill ${status.network}`, textContent: status.network }), lockBtn, setBtn);
+      h("span", { class: `pill ${status.network}`, textContent: status.network }), lockBtn, outBtn, setBtn);
   } else {
     header = backBar(titles[view], () => go(view === "dot" ? "settings" : "home"));
   }
@@ -745,6 +808,8 @@ function homeView(): HTMLElement {
   const notices: Child[] = [];
   if (prod.feeActive) {
     notices.push(h("div", { class: "notice" }, h("strong", {}, `Service fee ${prod.feeBps / 100}% per push. `), "Shown in full before you confirm."));
+  } else if (prod.feeStartsAt > 0) {
+    notices.push(feeCountdown(prod.feeBps, prod.feeStartsAt));
   }
   if (balError) notices.push(h("div", { class: "notice bad" }, balError));
   else if (b && BigInt(b.publicLamports) < BigInt(b.feeReserveLamports) && BigInt(b.privateLamports) > 0n) {
@@ -922,7 +987,7 @@ function rewardsView(): HTMLElement {
   if (prod.stakingEnabled) root.append(stakePanel());
   root.append(h("div", { class: "section-label", textContent: "Tiers" }), ladder);
   if (perks.length) root.append(h("ul", { class: "perks" }, ...perks));
-  if (!prod.feeActive) root.append(h("div", { class: "notice" }, "No service fee is charged right now, so discounts have no effect yet."));
+  if (!prod.feeActive) root.append(h("div", { class: "notice" }, prod.feeStartsAt > 0 ? `The service fee starts ${fmtUtc(prod.feeStartsAt)}. Discounts apply from then.` : "No service fee is charged right now, so discounts have no effect yet."));
   root.append(h("div", { class: "msg", textContent: prod.tierSource === "staking" ? `Your tier counts ${sym} staked from your gateway. Staked tokens stay counted when you burn ${sym} to pay a fee.` : `Your tier is read from the ${sym} at the gateway's public address. Burning ${sym} to pay a fee lowers it.` }));
   return root;
 }
@@ -1170,6 +1235,7 @@ function pushView(): HTMLElement {
           lamports: all ? "all" : lamports.toString(),
           to: dest,
           payWithToken: q.mode === "token",
+          quotedAt: q.at,
         });
         const paid = BigInt(r.burned) > 0n && tok ? ` · burned ${fmtTok(r.burned)} ${tok.symbol}` : BigInt(r.feeLamports) > 0n ? ` · fee ${fmt(r.feeLamports)} SOL` : "";
         toast(`Sent ${fmtShort(r.lamports)} SOL${paid}`, "ok", r.url);
@@ -1492,6 +1558,9 @@ function settingsView(): HTMLElement {
     await render();
   };
 
+  const outNow = h("button", { class: "btn secondary" }, icon("logout", 18), "Log out and switch gateway");
+  outNow.onclick = () => void logOut().catch((e: unknown) => toast(e instanceof Error ? e.message : String(e), "err"));
+
   const dotBtn = h("button", { class: "btn secondary", textContent: "Dot settings" });
   dotBtn.onclick = () => go("dot");
 
@@ -1514,6 +1583,8 @@ function settingsView(): HTMLElement {
         cpOld.wrap, cpNew.wrap, cpMeter, cpNew2.wrap, cpBtn, cpMsg),
       group("Backup", expPass.wrap, expBtn, expOut, expMsg),
       lockNow,
+      group("Other gateways", outNow,
+        h("div", { class: "msg", textContent: "Logging out locks this gateway and keeps it saved here, encrypted. Pick it again from the start screen and unlock it with its own passphrase or passkey. Each gateway keeps its own main wallet and destinations." })),
       h("div", { class: "notice" }, "Keep your recovery key offline. It's the only way back into this gateway.")));
 }
 

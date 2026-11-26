@@ -16,7 +16,10 @@ const listeners = [], alarmListeners = [];
 globalThis.chrome = {
   runtime: { id: "w", getURL: (p) => `w:/${p}`, onMessage: { addListener: (f) => listeners.push(f) } },
   storage: {
-    local: { get: async (k) => ({ [k]: structuredClone(store[k]) }), set: async (o) => Object.assign(store, structuredClone(o)) },
+    local: {
+      get: async (k) => ({ [k]: structuredClone(store[k]) }), set: async (o) => Object.assign(store, structuredClone(o)),
+      remove: async (k) => { for (const x of Array.isArray(k) ? k : [k]) delete store[x]; },
+    },
     session: {
       get: async (k) => Object.fromEntries((Array.isArray(k) ? k : [k]).filter((x) => x in mem).map((x) => [x, mem[x]])),
       set: async (o) => Object.assign(mem, o),
@@ -154,6 +157,37 @@ check("its settings come along, cleaned", store.settings.network === "mainnet" &
   && store.settings.extraDestinations.length === 1 && !("evil" in store.settings), store.settings);
 r = await ask({ type: "unlock", passphrase: GOOD });
 check("it opens with the same passphrase, same key", r.ok && r.data.unlocked && mem.seedHex === seedHex, r);
+
+// log out and switch gateways: nothing is decrypted or deleted, each gateway keeps its own settings
+const addrA = store.vault.address;
+r = await ask({ type: "logOut" });
+check("log out locks and sets the gateway aside, still encrypted", r.ok && !r.data.hasVault && !r.data.unlocked && !mem.seedHex
+  && store.vault === undefined && r.data.saved.length === 1 && r.data.saved[0] === addrA && typeof store.saved[0].vault.blob.ct === "string", r.data);
+check("its main wallet and destinations go with it", store.saved[0].mainWallet === main && store.saved[0].extraDestinations.length === 1
+  && store.settings.mainWallet === "" && store.settings.extraDestinations.length === 0, { saved: store.saved[0], settings: store.settings });
+r = await ask({ type: "create", passphrase: BETTER });
+check("another gateway can be made after logging out", r.ok, r);
+const addrB = store.vault.address;
+r = await ask({ type: "status" });
+check("the first stays listed; the open one isn't", r.ok && addrB !== addrA && r.data.saved.length === 1 && r.data.saved[0] === addrA, r.data);
+r = await ask({ type: "switchTo", address: addrA });
+check("switching needs a log out first", r.ok === false && store.vault.address === addrB, r);
+await ask({ type: "logOut" });
+r = await ask({ type: "switchTo", address: addrA });
+check("switching back: current again, locked, with its own settings", r.ok && r.data.hasVault && !r.data.unlocked && r.data.address === addrA
+  && r.data.mainWallet === main && r.data.saved.length === 1 && r.data.saved[0] === addrB, r.data);
+r = await ask({ type: "unlock", passphrase: BETTER });
+check("the other gateway's passphrase doesn't open it", r.ok === false && !mem.seedHex, r);
+r = await ask({ type: "unlock", passphrase: GOOD });
+check("its own passphrase opens it, same key", r.ok && r.data.unlocked && mem.seedHex === seedHex, r);
+r = await ask({ type: "import", seedHex, passphrase: BETTER });
+check("importing a gateway that is already open is refused", r.ok === false, r);
+await ask({ type: "logOut" });
+await ask({ type: "switchTo", address: addrB });
+await ask({ type: "logOut" });
+r = await ask({ type: "import", seedHex, passphrase: BETTER });
+check("importing a saved gateway by its recovery key brings back its settings and lists it once", r.ok && store.vault.address === addrA
+  && store.settings.mainWallet === main && store.saved.length === 1 && store.saved[0].vault.address === addrB, { r, saved: store.saved.map((g) => g.vault.address) });
 
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");
 process.exit(failed ? 1 : 0);

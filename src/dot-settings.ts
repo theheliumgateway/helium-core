@@ -72,7 +72,7 @@ export function dotSettingsView(): HTMLElement {
       seg([{ v: 0, label: "Always review" }, { v: 0.5, label: "0.5" }, { v: 1, label: "1" }, { v: 2, label: "2" }, { v: 5, label: "5 SOL" }], f.autoMax, (v) => void save({ fund: { ...f, autoMax: v } }), fundOff),
       h("div", { class: "notice" },
         f.autoMax > 0
-          ? `A 1.37 SOL buy would unshield ${example} SOL${fundIsAuto(example, f) ? " in one click" : ", which is above your limit, so you'd review it first"}. One-click pushes only ever go to the main wallet saved in your gateway, and the gateway must be unlocked. Larger amounts open the review. `
+          ? `A 1.37 SOL buy would unshield ${example} SOL${fundIsAuto(example, f) ? " in one click" : ", which is above your limit, so you'd review it first"}. One-click pushes only ever go to the main wallet saved in your gateway, and the gateway must be unlocked. They pay the service fee like any push, and the confirmation shows it. Larger amounts open the review. `
           : `A 1.37 SOL buy would push ${example} SOL. You review and confirm every push in the gateway. `,
         h("strong", {}, "Pushes are public, "),
         "so a push that matches the buy to the lamport, seconds before it, links the two. Rounding up and keeping some SOL in your trading wallet makes that harder."),

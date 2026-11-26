@@ -185,6 +185,10 @@ const FUND_TTL = 120_000;
 
 /** The wallet page: redeems the code from its URL, and reports the shielded balance. */
 async function fromGateway(req: GatewayRequest): Promise<FundClaim | null> {
+  if (req?.type === "balance.clear") {
+    await local.remove("shielded");
+    return null;
+  }
   if (req?.type === "balance.report") {
     if (typeof req.lamports !== "string" || !/^\d{1,19}$/.test(req.lamports)) throw new Error("Bad balance");
     if (req.network !== "mainnet" && req.network !== "devnet") throw new Error("Bad network");
@@ -230,7 +234,7 @@ chrome.runtime.onMessage.addListener((req: unknown, sender, sendResponse) => {
   const url = sender.url ?? "";
   const trusted = url.startsWith(EXT_BASE) && (sender.origin === undefined || `${sender.origin}/` === EXT_BASE);
   const type = (req as { type?: unknown } | null)?.type;
-  const fromWallet = trusted && url.startsWith(WALLET) && (type === "fund.claim" || type === "balance.report");
+  const fromWallet = trusted && url.startsWith(WALLET) && (type === "fund.claim" || type === "balance.report" || type === "balance.clear");
   (fromWallet ? fromGateway(req as GatewayRequest)
     : trusted ? fromSettings(req as SettingsRequest)
     : fromDot(req as DockRequest, sender))

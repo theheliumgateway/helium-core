@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { computeFee, tierForBalance } from "../src/fees";
+import { computeFee, feeStarted, fmtUtc, tierForBalance } from "../src/fees";
 import { activeProduct, MAX_FEE_BPS, PRODUCT } from "../src/product";
 import type { ActiveProduct } from "../src/product";
 
@@ -12,6 +12,7 @@ const base: ActiveProduct = {
     { name: "Gold", min: 100_000n, discountBps: 10_000 },
   ],
   burnPerPush: 100n, extraDestinationsMinTier: 1, maxExtraDestinations: 5,
+  feeStartsAt: 0, tierSource: "holding", staking: null,
 };
 const SOL = 1_000_000_000n;
 
@@ -33,6 +34,17 @@ assert.equal(computeFee({ ...base, feeBps: 0 }, 10n * SOL, 0).fee, 0n);
 // zero / negative amount -> no fee
 assert.equal(computeFee(base, 0n, 0).fee, 0n);
 
+// start time: nothing before it, the full fee from that millisecond on
+const START = Date.parse("2026-11-28T17:30:00Z");
+const timed = { ...base, feeStartsAt: START };
+assert.equal(computeFee(timed, 10n * SOL, 0, START - 1).fee, 0n);
+assert.equal(computeFee(timed, 10n * SOL, 0, START - 1).gross, 0n);
+assert.equal(computeFee(timed, 10n * SOL, 0, START).fee, 20_000_000n);
+assert.equal(feeStarted(timed, START - 1), false);
+assert.equal(feeStarted(timed, START), true);
+assert.equal(feeStarted({ ...timed, treasury: null }, START), false);
+assert.equal(fmtUtc(START), "28 Nov 2026, 17:30 UTC");
+
 // tiers
 assert.equal(tierForBalance(base, 0n).level, 0);
 assert.equal(tierForBalance(base, 999n).level, 0);
@@ -41,9 +53,17 @@ assert.equal(tierForBalance(base, 50_000n).name, "Silver");
 assert.equal(tierForBalance(base, 10n ** 12n).name, "Gold");
 assert.equal(tierForBalance(base, 10_000n).discountBps, 5_000);
 
-// config guards: default is fully OFF; absurd fee is clamped; bad addresses disable features
-const off = activeProduct("mainnet");
-assert.equal(off.treasury, null); assert.equal(off.feeBps, 0); assert.equal(off.token, null);
+// config guards: default is fully OFF; absurd fee is clamped; bad addresses disable features; bad start times keep it off
+const off = activeProduct("devnet");
+assert.equal(off.treasury, null); assert.equal(off.feeBps, 0); assert.equal(off.feeStartsAt, 0);
+const live = PRODUCT.mainnet;
+PRODUCT.mainnet = { ...live, feeStartsAt: "tomorrow" };
+assert.equal(activeProduct("mainnet").feeStartsAt, Number.MAX_SAFE_INTEGER); // unreadable start -> never starts
+PRODUCT.mainnet = { ...live, feeStartsAt: "2026-11-26T22:40:00+02:00" };
+assert.equal(activeProduct("mainnet").feeStartsAt, Number.MAX_SAFE_INTEGER); // only UTC ("Z") is accepted
+PRODUCT.mainnet = { ...live, feeStartsAt: "2026-11-28T17:30:00Z" };
+assert.equal(activeProduct("mainnet").feeStartsAt, START);
+PRODUCT.mainnet = live;
 PRODUCT.devnet = { ...PRODUCT.devnet, treasury: T, feeBps: 5_000, token: { mint: "not-an-address", symbol: "X", decimals: 6 }, tiers: [{ name: "a", minAmount: "1", discountBps: 99_999 }] };
 const clamped = activeProduct("devnet");
 assert.equal(clamped.feeBps, MAX_FEE_BPS);

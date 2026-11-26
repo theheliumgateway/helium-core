@@ -10,6 +10,7 @@ import {
 import { AUTOLOCK_CHOICES, type Balances, type PasskeyInfo, type ProductInfo, type Request, type Response, type Status } from "./messages";
 import { passphraseProblem } from "./strength";
 import { activeProduct } from "./product";
+import { feeConfigured, feeStarted } from "./fees";
 import { makeQuote } from "./quotes";
 import {
   autoShieldAmount,
@@ -42,6 +43,15 @@ interface StoredVault {
 }
 const B64URL = /^[A-Za-z0-9_-]+$/;
 
+/** A gateway set aside with Log out: its encrypted key and the settings that belong to it, not to the browser. */
+interface SavedGateway {
+  vault: StoredVault;
+  mainWallet: string;
+  extraDestinations: string[];
+  autoShield: boolean;
+}
+const MAX_SAVED = 20;
+
 const local = chrome.storage.local;
 const session = chrome.storage.session;
 
@@ -52,6 +62,15 @@ async function getSettings(): Promise<Settings> {
 async function getVault(): Promise<StoredVault | null> {
   const { vault } = await local.get("vault");
   return (vault as StoredVault | undefined) ?? null;
+}
+async function getSaved(): Promise<SavedGateway[]> {
+  const { saved } = await local.get("saved");
+  return Array.isArray(saved) ? (saved as SavedGateway[]).filter((g) => g && g.vault && typeof g.vault.address === "string") : [];
+}
+/** A gateway that becomes current is no longer listed as set aside (one copy of each key on the device). */
+async function unsave(address: string) {
+  const saved = await getSaved();
+  if (saved.some((g) => g.vault.address === address)) await local.set({ saved: saved.filter((g) => g.vault.address !== address) });
 }
 
 // Unlocked seed lives only in session storage (memory; cleared on browser close, not readable by web pages).
@@ -110,7 +129,8 @@ function productInfo(s: Settings): ProductInfo {
   const p = activeProduct(s.network);
   return {
     feeBps: p.feeBps,
-    feeActive: !!p.treasury && p.feeBps > 0,
+    feeActive: feeStarted(p),
+    feeStartsAt: feeConfigured(p) && !feeStarted(p) ? p.feeStartsAt : 0,
     tokenSymbol: p.token?.symbol ?? null,
     tokenDecimals: p.token?.decimals ?? 0,
     tiers: p.tiers.map((t) => ({ name: t.name, min: t.min.toString(), discountBps: t.discountBps })),
@@ -138,6 +158,7 @@ async function status(): Promise<Status> {
     mainWallet: s.mainWallet,
     extraDestinations: s.extraDestinations,
     product: productInfo(s),
+    saved: (await getSaved()).map((g) => g.vault.address).filter((a) => a !== v?.address),
   };
 }
 
@@ -153,6 +174,7 @@ async function handle(req: Request): Promise<unknown> {
       const addr = vaultAddress(seed);
       await local.set({ vault: { blob: await encryptSeed(req.passphrase, seed), address: addr } satisfies StoredVault });
       await unlockWith(seed);
+      await unsave(addr);
       // Returned once so the user can back it up. It is not stored in plaintext anywhere.
       return { address: addr, seedHex: toHex(seed) };
     }
@@ -163,8 +185,12 @@ async function handle(req: Request): Promise<unknown> {
       const seed = fromHex(req.seedHex);
       if (seed.length !== 32) throw new Error("Recovery key must be 32 bytes (64 hex characters)");
       const addr = vaultAddress(seed);
-      await local.set({ vault: { blob: await encryptSeed(req.passphrase, seed), address: addr } satisfies StoredVault });
+      // Importing a gateway that was set aside here brings back its own settings (main wallet, destinations).
+      const was = (await getSaved()).find((g) => g.vault.address === addr);
+      const back: Partial<Settings> = was ? { mainWallet: was.mainWallet, extraDestinations: was.extraDestinations, autoShield: was.autoShield } : {};
+      await local.set({ vault: { blob: await encryptSeed(req.passphrase, seed), address: addr } satisfies StoredVault, settings: { ...(await getSettings()), ...back } });
       await unlockWith(seed);
+      await unsave(addr);
       return { address: addr };
     }
 
@@ -191,6 +217,36 @@ async function handle(req: Request): Promise<unknown> {
     case "lock":
       await lock();
       return status();
+
+    case "logOut": {
+      // Nothing is decrypted or deleted: the encrypted key moves to the saved list, with the settings that are its own.
+      const v = await getVault();
+      await lock();
+      clearTierCache();
+      if (!v) return status();
+      const s = await getSettings();
+      const others = (await getSaved()).filter((g) => g.vault.address !== v.address);
+      if (others.length >= MAX_SAVED) throw new Error(`At most ${MAX_SAVED} gateways can be saved on this device`);
+      const entry: SavedGateway = { vault: v, mainWallet: s.mainWallet, extraDestinations: s.extraDestinations, autoShield: s.autoShield === true };
+      await local.set({
+        saved: [entry, ...others],
+        settings: { ...s, mainWallet: DEFAULT_SETTINGS.mainWallet, extraDestinations: [], autoShield: DEFAULT_SETTINGS.autoShield },
+      });
+      await local.remove("vault");
+      return status();
+    }
+
+    case "switchTo": {
+      if (await getVault()) throw new Error("Log out of the current gateway first");
+      const g = (await getSaved()).find((x) => x.vault.address === req.address);
+      if (!g) throw new Error("That gateway isn't saved on this device");
+      await local.set({
+        vault: g.vault,
+        settings: { ...(await getSettings()), mainWallet: g.mainWallet, extraDestinations: g.extraDestinations, autoShield: g.autoShield },
+      });
+      await unsave(g.vault.address);
+      return status();
+    }
 
     case "checkPassphrase":
       await checkPassphrase(req.passphrase);
@@ -248,6 +304,7 @@ async function handle(req: Request): Promise<unknown> {
         keep.extraDestinations = old.extraDestinations.filter((a): a is string => typeof a === "string" && isAddress(a) && a !== req.address).slice(0, 20);
       }
       await local.set({ vault: { blob, address: req.address } satisfies StoredVault, settings: { ...(await getSettings()), ...keep } });
+      await unsave(req.address);
       return status();
     }
 
@@ -372,6 +429,11 @@ async function handle(req: Request): Promise<unknown> {
           throw new Error("That destination is not in your saved list");
         }
         const product = activeProduct(settings.network);
+        // A fee that started after the user's review must not be charged without being shown: review again.
+        const now = Date.now();
+        if (feeConfigured(product) && now >= product.feeStartsAt && (req.quotedAt ?? now) < product.feeStartsAt) {
+          throw new Error(`The ${product.feeBps / 100}% service fee started after you reviewed this push. Review it again to see the fee.`);
+        }
         const h = await openVault(seed, settings);
         const amount = req.lamports === "all" ? "all" : parseLamports(req.lamports);
         // The fee/burn is recomputed here from the final amount; nothing the UI displays is trusted.

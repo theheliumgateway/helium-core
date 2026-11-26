@@ -41,6 +41,8 @@ export interface ProductConfig {
   feeBps: number;
   /** Maximum fee per push in lamports, as a decimal string. "0" = no cap. */
   feeCapLamports: string;
+  /** When the fee starts, as an ISO 8601 UTC time ("2026-11-28T17:30:00Z"). "" = at once. Before it, no fee is charged. */
+  feeStartsAt: string;
   /** The product token. null = no token features. */
   token: TokenDef | null;
   /** Tier source: tokens held in the vault wallet, tokens staked in `staking`, or both added together. */
@@ -64,6 +66,7 @@ const OFF: ProductConfig = {
   treasury: "",
   feeBps: 0,
   feeCapLamports: "0",
+  feeStartsAt: "",
   token: null,
   tierSource: "holding",
   staking: null,
@@ -94,7 +97,13 @@ export const PRODUCT: Record<Network, ProductConfig> = {
     // feeCapLamports: "20000000", // never more than 0.02 SOL per push
     // extraDestinationsMinTier: 1,
   },
-  mainnet: { ...OFF },
+  mainnet: {
+    ...OFF,
+    treasury: "7xjjCNA696brh5PAcyuYKQwZWBKpKDdqWoL9as3c6uuf", // the fee wallet (public address)
+    feeBps: 50, // 0.5% of the pushed amount (the most MAX_FEE_BPS allows)
+    feeCapLamports: "200000000", // never more than 0.2 SOL per push
+    feeStartsAt: "2026-11-28T17:30:00Z", // no fee before this time
+  },
 };
 
 /** A validated, normalized view of the config. Anything invalid quietly disables just that feature. */
@@ -102,6 +111,8 @@ export interface ActiveProduct {
   treasury: string | null;
   feeBps: number;
   feeCapLamports: bigint;
+  /** When the fee starts, in ms since 1970. 0 = no start time (the fee applies at once). */
+  feeStartsAt: number;
   token: TokenDef | null;
   tierSource: TierSource;
   staking: StakingDef | null;
@@ -132,6 +143,8 @@ export function activeProduct(network: Network): ActiveProduct {
     treasury: c.treasury && isAddress(c.treasury) ? c.treasury : null,
     feeBps: Math.min(MAX_FEE_BPS, Math.max(0, Math.floor(c.feeBps))),
     feeCapLamports: big(c.feeCapLamports),
+    // An unreadable start time keeps the fee off, so a typo can never start it early.
+    feeStartsAt: c.feeStartsAt === "" ? 0 : /^\d{4}-\d\d-\d\dT\d\d:\d\d(:\d\d)?Z$/.test(c.feeStartsAt) ? Date.parse(c.feeStartsAt) || Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER,
     token,
     tiers,
     burnPerPush: token ? big(c.burnPerPush) : 0n,
