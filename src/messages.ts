@@ -62,6 +62,9 @@ export interface ProductInfo {
   /** Staking pool configured for this network (stake/unstake available). */
   stakingEnabled: boolean;
   stakeLockSeconds: number;
+  /** The download version is running signed token settings newer than the ones built into it: a full build with them
+   *  is on heliumgateway.net, and the user should download it again. */
+  updateReady: boolean;
 }
 
 export interface Status {

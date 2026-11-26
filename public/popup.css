@@ -104,6 +104,7 @@ button.row-item:hover { background: var(--surface-2); }
 .notice.warn { color: #e9c46a; background: rgba(251,191,36,.07); border-color: rgba(251,191,36,.28); }
 .notice.bad { color: var(--bad); background: rgba(248,113,113,.08); border-color: rgba(248,113,113,.3); }
 .notice strong { color: var(--text); }
+.notice a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
 
 /* ---------- forms ---------- */
 .stack { display: grid; gap: 12px; }

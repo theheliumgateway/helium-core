@@ -141,6 +141,7 @@ function productInfo(s: Settings): ProductInfo {
     tierSource: p.tierSource,
     stakingEnabled: !!p.staking,
     stakeLockSeconds: p.staking?.lockSeconds ?? 0,
+    updateReady: tokenIssued > TOKEN_ISSUED,
   };
 }
 

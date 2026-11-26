@@ -127,6 +127,15 @@ function feeCountdown(feeBps: number, at: number): HTMLElement {
   return el;
 }
 
+/** Shown on the download version once it runs signed token settings newer than its build: the full build is on the site.
+ *  Replacing the files in the same folder keeps the extension's id, so the gateway stays. */
+function updateNotice(): HTMLElement {
+  return h("div", { class: "notice warn" }, h("strong", {}, "New version of Helium. "),
+    "This copy got the latest coin settings automatically. ",
+    h("a", { href: "https://heliumgateway.net/docs/#install", target: "_blank", rel: "noopener noreferrer", textContent: "Download it again" }),
+    ", unzip it over the same folder (replace the files), then click the reload arrow on chrome://extensions. Your gateway stays.");
+}
+
 function toast(text: string, kind: "ok" | "err", linkUrl?: string) {
   document.querySelector(".toast")?.remove();
   const t = h("div", { class: `toast ${kind}` }, icon(kind === "ok" ? "check" : "lock", 18), h("span", {}, text));
@@ -806,6 +815,7 @@ function homeView(): HTMLElement {
     tokenRow, tierRow, mainRow);
 
   const notices: Child[] = [];
+  if (prod.updateReady) notices.push(updateNotice());
   if (prod.feeActive) {
     notices.push(h("div", { class: "notice" }, h("strong", {}, `Service fee ${prod.feeBps / 100}% per push. `), "Shown in full before you confirm."));
   } else if (prod.feeStartsAt > 0) {
