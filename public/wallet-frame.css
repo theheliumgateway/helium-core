@@ -1,0 +1,33 @@
+/* The frame around the wallet page (wallet.html): the wallet UI itself is popup.css. */
+html, body { height: 100%; }
+body.web {
+  width: auto; height: auto; min-height: 100%; overflow: auto;
+  display: flex; flex-direction: column; align-items: center; gap: 14px; padding-bottom: 24px;
+  background: radial-gradient(70% 50% at 50% 0%, rgba(232,65,37,.16), rgba(232,65,37,0) 70%), var(--bg);
+}
+.web-bar { width: 100%; max-width: 960px; display: flex; justify-content: space-between; align-items: center; padding: 16px 20px 4px; }
+.web-home { color: var(--text); text-decoration: none; font-weight: 650; padding: 10px 0; display: inline-flex; align-items: center; gap: 8px; }
+.web-home img { display: block; }
+.web-home:hover { color: var(--accent-2); }
+.web-badge { color: var(--muted); font-size: 12.5px; border: 1px solid var(--line); border-radius: 99px; padding: 6px 11px; }
+.web-shell {
+  position: relative; width: 400px; max-width: calc(100% - 32px); height: 720px; max-height: calc(100vh - 150px); min-height: 560px;
+  border: 1px solid var(--line); border-radius: 26px; overflow: hidden; background: var(--bg);
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,.8), 0 0 0 1px rgba(255,255,255,.02);
+}
+.web-shell #app { height: 100%; }
+.web-note { max-width: 400px; margin: 0 16px; color: var(--muted); font-size: 12.5px; line-height: 1.5; text-align: center; }
+@media (max-width: 480px) {
+  body.web { gap: 0; padding-bottom: 0; }
+  .web-badge, .web-note { display: none; }
+  .web-shell { width: 100%; max-width: 100%; height: calc(100dvh - 56px); max-height: none; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+}
+
+/* Opened by the trading dot (/app/?dock): only the gateway, filling its small window. */
+body.web.docked { gap: 0; padding: 0; height: 100%; }
+body.web.docked .web-bar, body.web.docked .web-note { display: none; }
+body.web.docked .web-shell { width: 100%; max-width: none; height: 100vh; max-height: none; min-height: 0; border: 0; border-radius: 0; box-shadow: none; }
+
+
+a.web-badge { text-decoration: none; }
+a.web-badge:hover { color: var(--text); border-color: var(--muted); }

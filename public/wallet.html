@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Helium · Wallet</title>
+  <link rel="icon" href="icon-48.png" />
+  <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="wallet-frame.css" />
+</head>
+<body class="web">
+  <header class="web-bar">
+    <span class="web-home"><img src="logo-mark.png" alt="" width="26" height="26"> Helium</span>
+    <a class="web-badge" href="https://heliumgateway.net/docs/" target="_blank" rel="noreferrer">How it works</a>
+  </header>
+  <main class="web-shell"><div id="app"></div></main>
+  <p class="web-note">Your key is encrypted and kept inside this extension, out of reach of websites and other extensions. Back up your recovery key: removing the extension deletes it. Software keys are for amounts you can afford to lose.</p>
+  <script type="module" src="wallet.js"></script>
+</body>
+</html>

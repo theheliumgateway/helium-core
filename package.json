@@ -1,0 +1,33 @@
+{
+  "name": "helium-core",
+  "version": "1.0.0",
+  "private": true,
+  "license": "BUSL-1.1",
+  "description": "The key-handling core of the Helium browser extension and its push relayer, published so anyone can check it.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "verify": "node verify.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node test/relay.test.mjs && node test/vault.test.mjs && node test/load-bg.mjs && npm run test:fees && npm run test:stake-entry && npm run test:sweep",
+    "test:fees": "esbuild test/fees.test.ts --bundle --platform=node --format=cjs --outfile=test/fees.test.cjs --log-level=error && node test/fees.test.cjs",
+    "test:stake-entry": "esbuild test/stake-entry.test.ts --bundle --platform=node --format=cjs --outfile=test/stake-entry.test.cjs --log-level=error && node test/stake-entry.test.cjs",
+    "test:sweep": "esbuild test/sweep.test.ts --bundle --platform=node --format=cjs --outfile=test/sweep.test.cjs --log-level=error && node test/sweep.test.cjs"
+  },
+  "dependencies": {
+    "@heliuslabs/spr": "0.9.0-alpha",
+    "@solana-program/system": "0.14.1",
+    "@solana-program/token": "0.16.1",
+    "@solana/kit": "8.6.0",
+    "@solana/web3.js": "1.98.4",
+    "@streamflow/staking": "13.5.0",
+    "bn.js": "5.2.3",
+    "buffer": "6.0.3"
+  },
+  "devDependencies": {
+    "@types/bn.js": "5.2.0",
+    "@types/chrome": "0.0.300",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

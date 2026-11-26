@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Helium",
+  "version": "1.0.0",
+  "description": "Private Solana gateway in your browser: hold SOL in a Helius privacy ring, with a floating dot for one-tap funding on trading sites.",
+  "icons": {
+    "16": "icon-16.png",
+    "48": "icon-48.png",
+    "128": "icon-128.png"
+  },
+  "action": {
+    "default_title": "Open Helium",
+    "default_icon": {
+      "16": "icon-16.png",
+      "48": "icon-48.png",
+      "128": "icon-128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.pump.fun/*",
+        "https://*.axiom.trade/*",
+        "https://photon-sol.tinyastro.io/*",
+        "https://*.bullx.io/*",
+        "https://*.gmgn.ai/*",
+        "https://*.dexscreener.com/*",
+        "https://*.birdeye.so/*",
+        "https://*.jup.ag/*",
+        "https://*.raydium.io/*",
+        "https://*.meteora.ag/*",
+        "https://*.padre.gg/*",
+        "https://*.letsbonk.fun/*"
+      ],
+      "js": [
+        "dock.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self'; connect-src 'self' https://mainnet.helius-rpc.com https://devnet.helius-rpc.com wss://mainnet.helius-rpc.com wss://devnet.helius-rpc.com https://d3gbdb0egjwcw9.cloudfront.net https://lite-api.jup.ag; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  }
+}
