@@ -24,7 +24,7 @@ The trading dot (`dock.js` in the extension) and the website are left out.
 
 The dot runs inside trading sites as a content script. It never holds the key or sees an address. All it can do is send the service worker the requests listed in `DockRequest`, and `src/ext-background.ts` checks them. The answer it gets back is `DockState`:
 
-- On pump.fun, if you turn on the setting to show your private balance there, that includes the private balance the wallet last reported. It's deleted 10 minutes after the wallet last reported it.
+- On pump.fun, it includes the private balance the wallet last reported, so it can be added to pump.fun's wallet balance. This is on by default and can be turned off in Dot settings. The balance is deleted 10 minutes after the wallet last reported it.
 - Anywhere else, it never includes a balance.
 
 Clicking the dot's Unshield only opens the wallet window with an amount filled in. The push itself happens in the wallet page and its worker, which are in this repository.
